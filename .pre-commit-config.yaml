@@ -1,0 +1,43 @@
+# https://githooks.com/
+# https://verdantfox.com/blog/how-to-use-git-pre-commit-hooks-the-hard-way-and-the-easy-way
+# https://docs.astral.sh/ruff/integrations/
+# https://pre-commit.com/
+
+# How to use it?
+#   pre-commit run  # Run the pre-commit check manually.
+#   pre-commit install  # Create a file in the directory to run automatically on commit: .git/hooks/pre-commit
+#   pre-commit uninstall  # Delete a file in the directory to disable automatic startup on commit.
+#   git commit --no-verify -m "msg"  # Disable startup for this commit (--no-verify OR -n)
+
+repos:
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: check-merge-conflict
+      - id: check-case-conflict
+      - id: check-toml
+      - id: debug-statements
+      - id: end-of-file-fixer
+      - id: mixed-line-ending
+      - id: trailing-whitespace
+
+  - repo: https://github.com/codespell-project/codespell
+    rev: v2.2.6
+    hooks:
+      - id: codespell
+        additional_dependencies:
+          - tomli
+
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: 'v0.8.0'
+    hooks:
+      - id: ruff
+        name: Check the codebase using the ruff linter.
+        args: [
+          --fix,
+          --quiet,
+          # --silent,
+        ]
+
+      - id: ruff-format
+        name: Check the codebase using the ruff formatter.

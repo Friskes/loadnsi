@@ -1,0 +1,263 @@
+[project]
+name = "loadnsi"
+# https://packaging.python.org/en/latest/guides/writing-pyproject-toml/#version
+dynamic = ["version"]
+license = {file = "LICENSE"}
+authors = [
+  {name="Friskes", email="friskesx@gmail.com"},
+]
+description = "Utility for downloading and updating NSI fixtures"
+readme = "README.md"
+requires-python = ">=3.8"
+keywords = ["Django", "Fixture", "NSI"]
+classifiers = [
+    "Development Status :: 5 - Production/Stable",
+    "Environment :: Web Environment",
+    "Intended Audience :: Developers",
+    "Operating System :: OS Independent",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet :: WWW/HTTP",
+    "Topic :: Documentation",
+    "Topic :: Software Development :: Code Generators",
+]
+# pip install .
+dependencies = [
+    "click==8.1.8",
+    "bs4==0.0.2",
+    "httpx==0.28.0",
+    "aiofiles==24.1.0",
+    "tenacity==9.0.0",
+    "rich==13.9.4",
+    "python-dotenv==1.0.1",
+]
+
+
+# pip install .[dev]
+# pip install .[ci]
+[project.optional-dependencies]
+dev = [
+    "pre-commit>=3.5.0",
+    "ruff==0.8.0",
+    "pytest>=7.0.1",
+    "mypy>=1.10.0",
+    "pytest-cov>=5.0.0",
+]
+ci = [
+    "ruff==0.8.0",
+    "pytest>=7.0.1",
+    "mypy>=1.10.0",
+    "pytest-cov>=5.0.0",
+]
+
+
+[project.urls]
+Homepage = "https://github.com/Friskes/loadnsi"
+Changelog = "https://github.com/Friskes/loadnsi/releases/"
+Issues = "https://github.com/Friskes/loadnsi/issues"
+
+
+[build-system]
+requires = ["setuptools>=64", "setuptools_scm[toml]>=8"]
+build-backend = "setuptools.build_meta"
+
+
+# https://setuptools-scm.readthedocs.io/en/latest/
+# https://stackoverflow.com/a/76470558/19276507
+# Данная настройка позволяет PyPI получать версию пакета из GitHub release tag
+[project.entry-points."setuptools.finalize_distribution_options"]
+setuptools_scm = "setuptools_scm._integration.setuptools:infer_version"
+
+[tool.setuptools_scm]
+
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = "test_*.py"
+addopts = [
+    "--strict-config",
+    "--strict-markers",
+]
+xfail_strict = true
+filterwarnings = [
+    "error",
+    "ignore::DeprecationWarning:typer",
+]
+
+
+[tool.mypy]
+# for ignore rules:  # type: ignore[error_code]
+packages = ["src.loadnsi", "tests"]
+python_version = "3.9"
+strict = true  # строгая проверка типов
+ignore_missing_imports = true  # [import-untyped]
+# Проверять тело функции без типизации аргументов
+check_untyped_defs = true  # [annotation-unchecked]
+# Не ругаться на нетипизированный родительский класс
+disallow_subclassing_any = false  # [misc]
+# Не ругаться на вызов нетипизированной функции
+disallow_untyped_calls = false  # [no-untyped-call]
+# Не ругаться на return -> Any
+warn_return_any = false  # [no-any-return]
+# Не ругаться на определение функций без аннотаций типов или с неполными аннотациями типов
+# disallow_untyped_defs = false
+# Игнор ряда кодов, глобально по проекту
+disable_error_code = [
+    "operator",
+    "assignment",
+    "union-attr",
+    "comparison-overlap",
+]
+
+
+[tool.coverage.run]
+concurrency = ["multiprocessing", "thread"]
+omit = ["*/tests/*", "types.py", "apps.py"]  # Не проверять директории и(или) файлы
+parallel = true
+branch = true  # Включать в замер результаты вхождения в условия
+source = ["src.loadnsi"]
+
+[tool.coverage.report]
+fail_under = 90  # Тест упадёт если покрытие составит менее 90%
+skip_covered = true  # Не включать в отчет информацию о файлах со 100% покрытием
+show_missing = true  # Включать в отчет информацию о номерах не протестированных строк кода
+sort = "-Cover"  # Сортировать отчет по уровню покрытия
+
+
+# https://docs.astral.sh/ruff/settings/
+# https://docs.astral.sh/ruff/configuration/#full-command-line-interface
+# cmd: ruff format  # Отформатирует все файлы в `.` текущем каталоге.
+[tool.ruff]
+required-version = "<=0.8.0"
+target-version = "py312"  # Версия python которую будет обслуживать ruff
+line-length = 105  # Макс длина строки кода после которой будет выполнен автоперенос
+indent-width = 4
+force-exclude = true  # pre-commit файл будет использовать exclude список
+src = ["src"]  # Корень проекта в котором лежат приложения  (необходимо для работы ruff.lint.isort)
+extend-exclude = [
+    "migrations",
+]
+
+
+[tool.ruff.format]
+quote-style = "single"  # Использовать одинарные кавычки при форматировании файла
+indent-style = "space"  # Использовать пробелы вместо табуляции при форматировании файла
+# line-ending = "lf"  # Последовательность конца строки для файлов по умолчанию
+
+
+# https://docs.astral.sh/ruff/linter/
+# cmd: ruff check --fix  # Проверить линтером все файлы в `.` текущем каталоге и исправить все безопасные проблемы.
+[tool.ruff.lint]
+# Настройки по умолчанию: https://docs.astral.sh/ruff/configuration/
+# https://docs.astral.sh/ruff/rules/
+# select по умолчанию: ["E4", "E7", "E9", "F"]
+extend-select = [
+    "E",      # https://docs.astral.sh/ruff/rules/#pycodestyle-e-w
+    "W",      # https://docs.astral.sh/ruff/rules/#pycodestyle-e-w
+    "I",      # https://docs.astral.sh/ruff/rules/#isort-i
+    "N",      # https://docs.astral.sh/ruff/rules/#pep8-naming-n
+    "UP",     # https://docs.astral.sh/ruff/rules/#pyupgrade-up
+    "YTT",    # https://docs.astral.sh/ruff/rules/#flake8-2020-ytt
+    "ASYNC",  # https://docs.astral.sh/ruff/rules/#flake8-async-async
+    "BLE",    # https://docs.astral.sh/ruff/rules/#flake8-blind-except-ble
+    "B",      # https://docs.astral.sh/ruff/rules/#flake8-bugbear-b
+    "A",      # https://docs.astral.sh/ruff/rules/#flake8-builtins-a
+    "COM",    # https://docs.astral.sh/ruff/rules/#flake8-commas-com
+    "C4",     # https://docs.astral.sh/ruff/rules/#flake8-comprehensions-c4
+    "DTZ",    # https://docs.astral.sh/ruff/rules/#flake8-datetimez-dtz
+    "T10",    # https://docs.astral.sh/ruff/rules/#flake8-debugger-t10
+    "DJ",     # https://docs.astral.sh/ruff/rules/#flake8-django-dj
+    "FA",     # https://docs.astral.sh/ruff/rules/#flake8-future-annotations-fa
+    "ISC",    # https://docs.astral.sh/ruff/rules/#flake8-implicit-str-concat-isc
+    "ICN",    # https://docs.astral.sh/ruff/rules/#flake8-import-conventions-icn
+    "G",      # https://docs.astral.sh/ruff/rules/#flake8-logging-format-g
+    "INP",    # https://docs.astral.sh/ruff/rules/#flake8-no-pep420-inp
+    "PIE",    # https://docs.astral.sh/ruff/rules/#flake8-pie-pie
+    "PYI",    # https://docs.astral.sh/ruff/rules/#flake8-pyi-pyi
+    "PT",     # https://docs.astral.sh/ruff/rules/#flake8-pytest-style-pt
+    "Q",      # https://docs.astral.sh/ruff/rules/#flake8-quotes-q
+    "RSE",    # https://docs.astral.sh/ruff/rules/#flake8-raise-rse
+    "RET",    # https://docs.astral.sh/ruff/rules/#flake8-return-ret
+    "SLF",    # https://docs.astral.sh/ruff/rules/#flake8-self-slf
+    "SLOT",   # https://docs.astral.sh/ruff/rules/#flake8-slots-slot
+    "SIM",    # https://docs.astral.sh/ruff/rules/#flake8-simplify-sim
+    "TID",    # https://docs.astral.sh/ruff/rules/#flake8-tidy-imports-tid
+    "TCH",    # https://docs.astral.sh/ruff/rules/#flake8-type-checking-tch
+    "TD",     # https://docs.astral.sh/ruff/rules/#flake8-todos-td
+    "INT",    # https://docs.astral.sh/ruff/rules/#flake8-gettext-int
+    "FLY",    # https://docs.astral.sh/ruff/rules/#flynt-fly
+    "PERF",   # https://docs.astral.sh/ruff/rules/#perflint-perf
+    "LOG",    # https://docs.astral.sh/ruff/rules/#flake8-logging-log
+    "RUF",    # https://docs.astral.sh/ruff/rules/#ruff-specific-rules-ruf
+    #! https://docs.astral.sh/ruff/rules/#refurb-furb
+    #! "FURB",  # refurb  (пока что не стабильно 29.03.2024)
+]
+ignore = [
+    # https://docs.astral.sh/ruff/rules/#pyflakes-f
+    "F403",    # (не ругаться на использование from ... import *)
+    # https://docs.astral.sh/ruff/rules/#pyupgrade-up
+    "UP031",   # (не ругаться на форматирование с помощью %s)
+    "UP035",   # (не ругаться на импорт из typing_extensions)
+    "UP036",   # (не ругаться на использование sys.version_info если текущая версия не подпадает под условие)
+    "UP038",   # (не ругаться на использование кортежа в isinstance или issubclass)
+    # https://docs.astral.sh/ruff/rules/#flake8-logging-format-g
+    "G004",    # (не ругаться на использование f-строк для сообщения лога)
+    # https://docs.astral.sh/ruff/rules/#ruff-specific-rules-ruf
+    "RUF001",  # (не ругаться на кириллицу в строках)
+    "RUF002",  # (не ругаться на кириллицу в докстрингах)
+    "RUF003",  # (не ругаться на кириллицу в комментариях)
+    "RUF012",  # (не ругаться на мутабельность коллекций)
+    # https://docs.astral.sh/ruff/rules/#flake8-pytest-style-pt
+    "PT009",   # (не ругаться на unittest ассерты)
+    "PT027",   # (не ругаться на unittest ассерты)
+    "PT001",   # (не ругаться на отсутствие круглых скобок у декоратора fixture)
+    "PT023",   # (не ругаться на отсутствие круглых скобок у декоратора mark.<marker>)
+    "PT004",   # (не ругаться на написание фикстур которые ничего не возвращают без префикса "_")
+    # https://docs.astral.sh/ruff/rules/#flake8-implicit-str-concat-isc
+    "ISC001",  # (конфликт с `COM812`)
+    # https://docs.astral.sh/ruff/rules/#flake8-commas-com
+    "COM812",  # (конфликт с `ISC001`)
+    # https://docs.astral.sh/ruff/rules/#flake8-self-slf
+    "SLF001",  # (не ругаться на приватные названия объектов)
+    # https://docs.astral.sh/ruff/rules/#flake8-simplify-sim
+    "SIM105",  # (не ругаться на использование try except pass блока)
+    # https://docs.astral.sh/ruff/rules/if-else-block-instead-of-if-exp/
+    "SIM108",  # (не ругаться на использование классического if-else блока вместо тернарного)
+    # https://docs.astral.sh/ruff/rules/#flake8-return-ret
+    "RET503",  # (не ругаться на отсутствие return None в конце функций)
+    # https://docs.astral.sh/ruff/rules/#flake8-blind-except-ble
+    "BLE001",  # (не ругаться на обработку обычного Exception)
+    # https://docs.astral.sh/ruff/rules/#flake8-django-dj
+    # https://docs.djangoproject.com/en/4.2/ref/models/fields/#null
+    # https://sentry.io/answers/django-difference-between-null-and-blank/
+    # https://www.django-rest-framework.org/api-guide/fields/#charfield
+    "DJ001",   # (не ругаться на использование null в моделях для текстовых полей)
+    # https://docs.astral.sh/ruff/rules/#flake8-comprehensions-c4
+    # {} VS dict()  # https://switowski.com/blog/dict-function-vs-literal-syntax/
+    "C408",    # (не ругаться на использование классов коллекций вместо их литералов)
+    "TD001",   # (не ругаться на использование FIXME и XXX)
+    "TD003",   # (не ругаться на отсутствие ссылки на issues)
+]
+# Не давать исправлять эти ошибки в тултипе, и в том числе автоматически при линте через команду
+unfixable = [
+]
+
+
+# https://docs.astral.sh/ruff/settings/#lintisort
+[tool.ruff.lint.isort]
+force-wrap-aliases = true  # Записывать импорты с несколькими `as` в кортеже
+combine-as-imports = true  # Записывать импорты с несколькими `as` в одной строке
+# force-sort-within-sections = true  # Всегда сортировать импорты по алфавиту, не обращая внимание на порядок import или from
+# from-first = true  # Записывать from импорты перед import
+# length-sort = true  # Сортировать импорты по длине строки а не по алфавиту
+# lines-after-imports = 2  # Количество пустых строк после последнего импорта
+# order-by-type = true  # Сортировать по регистру в дополнение к сортировке по алфавиту
+# required-imports = ["from __future__ import annotations"]  # Добавить импорт во все файлы
+
+
+[tool.ruff.lint.flake8-quotes]
+inline-quotes = "single"  # Не ругаться на одинарные кавычки
+docstring-quotes = "double"  # Ругаться на одинарные кавычки
