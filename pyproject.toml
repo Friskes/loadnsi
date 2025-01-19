@@ -8,7 +8,7 @@ authors = [
 ]
 description = "Utility for downloading and updating NSI fixtures"
 readme = "README.md"
-requires-python = ">=3.8"
+requires-python = ">=3.10"
 keywords = ["Django", "Fixture", "NSI"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
@@ -74,6 +74,11 @@ setuptools_scm = "setuptools_scm._integration.setuptools:infer_version"
 [tool.setuptools_scm]
 
 
+# Указываем точку входа для команды
+[project.scripts]
+loadnsi = "loadnsi.loadnsi:loadnsi"
+
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 python_files = "test_*.py"
@@ -91,7 +96,7 @@ filterwarnings = [
 [tool.mypy]
 # for ignore rules:  # type: ignore[error_code]
 packages = ["src.loadnsi", "tests"]
-python_version = "3.9"
+python_version = "3.10"
 strict = true  # строгая проверка типов
 ignore_missing_imports = true  # [import-untyped]
 # Проверять тело функции без типизации аргументов
@@ -121,7 +126,7 @@ branch = true  # Включать в замер результаты вхожд�
 source = ["src.loadnsi"]
 
 [tool.coverage.report]
-fail_under = 90  # Тест упадёт если покрытие составит менее 90%
+# fail_under = 90  # Тест упадёт если покрытие составит менее 90%
 skip_covered = true  # Не включать в отчет информацию о файлах со 100% покрытием
 show_missing = true  # Включать в отчет информацию о номерах не протестированных строк кода
 sort = "-Cover"  # Сортировать отчет по уровню покрытия

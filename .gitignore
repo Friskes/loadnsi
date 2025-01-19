@@ -19,3 +19,4 @@ trash
 htmlcov
 .vscode
 .env
+fixtures

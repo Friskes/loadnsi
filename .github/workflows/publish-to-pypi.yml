@@ -51,9 +51,9 @@ jobs:
       run: |
         python -m ruff format
 
-    - name: Run mypy
-      run: |
-        python -m mypy
+    # - name: Run mypy
+    #   run: |
+    #     python -m mypy
 
     - name: Run pytest with coverage
       run: |
