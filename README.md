@@ -1,4 +1,4 @@
-# Utility for downloading and updating NSI fixtures
+# Утилита для загрузки и обновления фикстур НСИ
 
 <div align="center">
 
