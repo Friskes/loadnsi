@@ -1,6 +1,8 @@
 import os
 
-from src.loadnsi.loadnsi import loadnsi  # noqa: F401
+from dotenv import find_dotenv, load_dotenv
+
+load_dotenv(find_dotenv())
 
 
 def pytest_configure() -> None:
