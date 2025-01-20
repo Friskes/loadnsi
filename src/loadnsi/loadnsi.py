@@ -60,11 +60,11 @@ filenames_without_ext = [
     help='Переключить уровень логгирования.',
 )
 @click.option(
-    '--use_pirate_api',
+    '--use_official_api',
     show_default=True,
     default=False,
     is_flag=True,
-    help='Использовать не официальный апи.',
+    help='Использовать официальный апи.',
 )
 @click.option(
     '--remove_files',
@@ -73,6 +73,12 @@ filenames_without_ext = [
     default=False,
     is_flag=True,
     help='Перед запуском удалять все файлы записанные в директории NSI_FIXTURES_FOLDER.',
+)
+@click.option(
+    '--yes',
+    '-y',
+    is_flag=True,
+    help="Пропустить подтверждение для --remove_files (автоматически ответить 'да').",
 )
 @click.option(
     '--compress_files',
@@ -88,15 +94,17 @@ filenames_without_ext = [
     'Это позволяет производить безопасный свитч расширений файлов без потери pk',
 )
 @click.option(
-    '--show_model_data',
+    '--model_examples',
+    '-me',
     show_default=True,
     default=None,
     type=click.Choice(['stdout', 'file'], case_sensitive=False),
     help='Выводить в консоль или файл, пример класса модели для каждого справочника, '
-    'генерируемый в методе construct_dict_model_cls и construct_passport_model_cls',
+    'генерируемый в методах _construct_dict_model_cls и _construct_passport_model_cls',
 )
 @click.option(
-    '--model_data_params',
+    '--model_examples_params',
+    '-mep',
     show_default=True,
     default=None,
     type=click.Choice(['all_fields_not_required'], case_sensitive=False),
@@ -182,6 +190,15 @@ def loadnsi(**options):
     # https://nsi.rosminzdrav.ru/dictionaries/1.2.643.5.1.13.13.11.1522/passport/latest
     # https://nsi.rosminzdrav.ru/dictionaries/1.2.643.5.1.13.13.99.2.197/passport/1.13
 
+    if options['remove_files'] and not options['yes']:
+        # Запрашиваем подтверждение
+        confirm = click.confirm(
+            'Вы уверены, что хотите продолжить с флагом --remove_files=true ?', default=False
+        )
+        if not confirm:
+            click.echo('Запуск отменен.')
+            return
+
     run_loadnsi(**options)
 
 
@@ -207,19 +224,20 @@ def run_loadnsi(**options):
 
     exampler = ModelExampler(
         file,
-        show_model_data=options['show_model_data'],
-        model_data_params=options['model_data_params'],
+        model_examples=options['model_examples'],
+        model_examples_params=options['model_examples_params'],
         parent_dict_cls=config.PARENT_DICT_CLS,
     )
 
-    if options['use_pirate_api']:
-        web = PirateApiNsiWebCrawler(
+    if options['use_official_api']:
+        web = OfficialApiNsiWebCrawler(
             nsi_base_url=nsi_base_url,
-            nsi_versions_path='/api/versions',
-            nsi_passport_path='/_next/data/{buildId}/dictionaries/{identifier}/passport/{version}.json',
+            nsi_versions_path='/port/rest/versions',
+            nsi_passport_path='/port/rest/passport',
             nsi_files_path=nsi_files_path,
+            nsi_api_user_key=os.environ.get('NSI_API_USER_KEY', None),
         )
-        nsi = PirateNsiDataHandler(
+        nsi = OfficialNsiDataHandler(
             web,
             file,
             exampler,
@@ -231,14 +249,13 @@ def run_loadnsi(**options):
             passports_rel_field=config.PASSPORTS_REL,
         )
     else:
-        web = OfficialApiNsiWebCrawler(
+        web = PirateApiNsiWebCrawler(
             nsi_base_url=nsi_base_url,
-            nsi_versions_path='/port/rest/versions',
-            nsi_passport_path='/port/rest/passport',
+            nsi_versions_path='/api/versions',
+            nsi_passport_path='/_next/data/{buildId}/dictionaries/{identifier}/passport/{version}.json',
             nsi_files_path=nsi_files_path,
-            nsi_api_user_key=os.environ.get('NSI_API_USER_KEY', None),
         )
-        nsi = OfficialNsiDataHandler(
+        nsi = PirateNsiDataHandler(
             web,
             file,
             exampler,
