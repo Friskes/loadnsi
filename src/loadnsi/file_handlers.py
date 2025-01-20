@@ -11,6 +11,7 @@ import aiofiles
 import aiofiles.base
 
 from .dtos import DictState
+from .exceptions import SkipWriteFileError
 from .logger import log
 
 
@@ -214,12 +215,17 @@ class NsiFileHandler(FileHandler):
             content = await file.read()
             records: list[dict] = self._unpacking_data(content, self.compress_files)
 
-            yield records
+            try:
+                yield records
+            except SkipWriteFileError as exc:
+                log.debug('%s', exc)
+            else:
+                log.debug('Запись файла: %s', filename)
 
-            packed_data = self._data_packaging(overwrite_from or records)
-            await file.seek(0)
-            await file.truncate()  # Полностью очищаем содержимое файла
-            await file.write(packed_data)
+                packed_data = self._data_packaging(overwrite_from or records)
+                await file.seek(0)
+                await file.truncate()  # Полностью очищаем содержимое файла
+                await file.write(packed_data)
 
     def remove_files(self) -> None:
         fixtures_folder = Path(self.local_path_prefix)

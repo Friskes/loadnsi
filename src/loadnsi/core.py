@@ -8,7 +8,7 @@ from typing import Any
 
 from .console_view import rich_live
 from .dtos import DictState
-from .exceptions import BadSubclassError, NsiPkNotFoundError
+from .exceptions import BadSubclassError, NsiPkNotFoundError, SkipWriteFileError
 from .file_handlers import FileHandler
 from .logger import log
 from .model_examplers import Exampler
@@ -140,13 +140,13 @@ class NsiDataHandler(abc.ABC):
                 # одновременно нескольким корутинам в один файл паспортов.
                 async with dict_state.passport_semaphore:  # noqa: SIM117
                     #
-                    # TODO(Ars): Добавить проверку чексуммы для объекта обновляемого паспорта,
-                    # чтобы не перезаписывать файл попусту когда ничего не изменилось
                     async with self.file.overwrite_records(self.passports_filename) as local_passports:
                         #
                         local_passports = self.downgrade_passports_version(local_passports)
 
-                        self.add_or_upd_passport(dict_state, remote_passport, local_passports)
+                        skipped = self.add_or_upd_passport(dict_state, remote_passport, local_passports)
+                        if skipped:
+                            raise SkipWriteFileError(f'Пропуск записи файла: {self.passports_filename}')
             #
             case 'exists_but_another_ext':
                 log.info('Чтение из: %s Запись в: %s', filename, dict_state.dict_filename)
@@ -159,13 +159,14 @@ class NsiDataHandler(abc.ABC):
 
                 local_passports = self.downgrade_passports_version(local_passports)
 
-                self.add_or_upd_passport(dict_state, remote_passport, local_passports)
+                skipped = self.add_or_upd_passport(dict_state, remote_passport, local_passports)
 
-                # NOTE(Ars): semaphore нужен для того чтобы не давать читать и записывать
-                # одновременно нескольким корутинам в один файл паспортов.
-                async with dict_state.passport_semaphore:
-                    await self.file.write_records(self.passports_filename, local_passports)
-                    self.file.remove_file(filename)
+                if not skipped:
+                    # NOTE(Ars): semaphore нужен для того чтобы не давать читать и записывать
+                    # одновременно нескольким корутинам в один файл паспортов.
+                    async with dict_state.passport_semaphore:
+                        await self.file.write_records(self.passports_filename, local_passports)
+                        self.file.remove_file(filename)
             #
             case 'not_exists':
                 local_passports = [self.build_passport(dict_state, remote_passport)]
@@ -336,7 +337,7 @@ class NsiDataHandler(abc.ABC):
         dict_state: DictState,
         remote_passport: dict,
         local_passports: list[dict],
-    ) -> None:
+    ) -> bool:
         """Перезаписывает объект паспорта из внутренней системы данными из внешней системы."""
         log.debug('Апдейт для: %s', dict_state.dict_filename)
         for i, passport in enumerate(local_passports):
@@ -348,9 +349,11 @@ class NsiDataHandler(abc.ABC):
                 if dict_state.version_changed or dict_state.forced_update:
                     dict_state.passport_pk = local_passports[i]['pk']
                     local_passports[i] = self.build_passport(dict_state, remote_passport)
-                break
+                    return False
+                return True
         else:
             local_passports.append(self.build_passport(dict_state, remote_passport))
+            return False
 
     async def get_remote_dicts(self, dict_state: DictState) -> list[dict]:
         """Получает данные справочника из внешней системы."""

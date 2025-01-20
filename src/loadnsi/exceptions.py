@@ -16,3 +16,7 @@ class NsiFileNotFoundError(Exception):
 
 class BadSubclassError(Exception):
     pass
+
+
+class SkipWriteFileError(Exception):
+    pass
