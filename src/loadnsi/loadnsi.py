@@ -1,6 +1,7 @@
 import asyncio
 import os
 from dataclasses import dataclass
+from pathlib import Path
 
 import click
 from dotenv import find_dotenv, load_dotenv
@@ -37,8 +38,10 @@ def load_config(config_path: str) -> dict:
 
 config = load_config(os.environ['PATH_TO_LOADNSI_CONFIG'])
 
-if not os.path.isdir(config.NSI_FIXTURES_FOLDER):
-    raise FileNotFoundError(f"Директория '{config.NSI_FIXTURES_FOLDER}' не существует. Создайте её.")
+fixtures_path = Path(config.NSI_FIXTURES_FOLDER)
+if not fixtures_path.exists():
+    log.warning("Директория '%s' не существует. Она будет создана.", config.NSI_FIXTURES_FOLDER)
+    fixtures_path.mkdir(parents=True, exist_ok=True)
 
 filenames_without_ext = [
     filename.split('.')[0]
