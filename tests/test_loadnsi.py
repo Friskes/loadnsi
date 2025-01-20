@@ -5,12 +5,7 @@ from src.loadnsi.loadnsi import loadnsi
 
 @pytest.mark.skip(reason='TODO')
 def test_loadnsi():
-    runner = CliRunner(
-        env={
-            'NSI_API_USER_KEY': 'some-key',
-            'PATH_TO_LOADNSI_CONFIG': 'tests/loadnsi_config.py',
-        }
-    )
+    runner = CliRunner()
     result = runner.invoke(
         loadnsi,
         # loadnsi --log_level=DEBUG --compress_files=gzip --use_pirate_api --show_model_data=file --model_data_params=all_fields_not_required --forced_update organization_nsi department_nsi  # noqa: E501
