@@ -24,7 +24,7 @@
     .env файл с содержимым:
     ```bash
     PATH_TO_LOADNSI_CONFIG=path/to/your/config/file.py
-    # Требуется только если вы собираетесь использовать официальный API НСИ (Запуск команды без флага `--use_pirate_api`)
+    # Требуется только если вы собираетесь использовать официальный API НСИ (Запуск команды с флагом `--use_official_api`)
     NSI_API_USER_KEY=some-key
     ```
 
