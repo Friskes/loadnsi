@@ -61,14 +61,14 @@ class ModelExampler(Exampler):
     def __init__(
         self,
         file: FileHandler,
-        show_model_data: str | None,
-        model_data_params: str | None,
+        model_examples: str | None,
+        model_examples_params: str | None,
         models_filename: str = 'models_example.py',
         parent_dict_cls: str = '',
     ) -> None:
         self.file = file
-        self.show_model_data = show_model_data
-        self.model_data_params = model_data_params
+        self.model_examples = model_examples
+        self.model_examples_params = model_examples_params
         self.passport_model_data: dict[str, dict[str, Any]] = {}
         self.models_filename = models_filename
         self.parent_dict_cls = f'({parent_dict_cls})' if parent_dict_cls else ''
@@ -102,8 +102,8 @@ class ModelExampler(Exampler):
                 params.append(f'default={field_params["field_type"].__name__}')
 
             if (
-                self.model_data_params is not None
-                and 'all_fields_not_required' in self.model_data_params
+                self.model_examples_params is not None
+                and 'all_fields_not_required' in self.model_examples_params
             ):
                 if issubclass(field_params['field_type'], bool):
                     params.append('default=False')
@@ -142,9 +142,6 @@ class ModelExampler(Exampler):
 
         for field_name, field_params in dict_state.dict_model_data.items():
             params = []
-            max_length = field_params.get('field_length')
-            if max_length is not None:
-                params.append(f'max_length={max_length}')
 
             if issubclass(field_params['field_type'], (dict, list)):
                 params.append(f'verbose_name={field_params.get("alias", "")!r}')
@@ -152,9 +149,13 @@ class ModelExampler(Exampler):
             else:
                 params.append(f'{field_params["alias"]!r}')
 
+            max_length = field_params.get('field_length')
+            if max_length is not None:
+                params.append(f'max_length={max_length}')
+
             if (
-                self.model_data_params is not None
-                and 'all_fields_not_required' in self.model_data_params
+                self.model_examples_params is not None
+                and 'all_fields_not_required' in self.model_examples_params
             ):
                 if issubclass(field_params['field_type'], bool):
                     params.append('default=False')
@@ -201,7 +202,7 @@ class ModelExampler(Exampler):
         self, dict_state: DictState, remote_passport: dict
     ) -> None:
         """"""
-        if not self.show_model_data:
+        if not self.model_examples:
             return
         log.debug('Обновление dict_model_data')
 
@@ -245,7 +246,7 @@ class ModelExampler(Exampler):
         self, dict_state: DictState, dict_data: dict[str, Any]
     ) -> None:
         """"""
-        if not self.show_model_data:
+        if not self.model_examples:
             return
 
         for field_name, field_value in dict_data.items():
@@ -265,7 +266,7 @@ class ModelExampler(Exampler):
 
     def upd_passport_model_data_with_passport_fields(self, local_passports: list[dict]) -> None:
         """"""
-        if not self.show_model_data:
+        if not self.model_examples:
             return
         log.debug('Обновление passport_model_data')
 
@@ -295,10 +296,10 @@ class ModelExampler(Exampler):
         if not passport_changed:
             return
 
-        if self.show_model_data == 'stdout':
+        if self.model_examples == 'stdout':
             model_cls = self._construct_passports_model_cls(passports_modelname, dict_internal_pk_field)
             print(model_cls)
-        elif self.show_model_data == 'file':
+        elif self.model_examples == 'file':
             model_cls = self._construct_passports_model_cls(passports_modelname, dict_internal_pk_field)
             self.file.remove_file(self.models_filename)
             self.file.write_text(self.models_filename, f'{model_cls}\n\n\n')
@@ -308,9 +309,9 @@ class ModelExampler(Exampler):
         if not dict_state.dict_changed:
             return
 
-        if self.show_model_data == 'stdout':
+        if self.model_examples == 'stdout':
             model_cls = self._construct_dict_model_cls(dict_state)
             print(model_cls)
-        elif self.show_model_data == 'file':
+        elif self.model_examples == 'file':
             model_cls = self._construct_dict_model_cls(dict_state)
             self.file.write_text(self.models_filename, f'{model_cls}\n\n\n')
