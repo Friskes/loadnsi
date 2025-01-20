@@ -30,8 +30,9 @@ def load_config(config_path: str) -> dict:
     """Загружает файл конфигурации как модуль."""
     full_path = os.path.join(os.getcwd(), config_path)
     config_globals = {}
-    with open(full_path) as file:
-        exec(file.read(), config_globals)
+    with open(full_path, encoding='utf-8') as file:
+        file_data = file.read()
+    exec(file_data, config_globals)
     filtered_keys = {k: v for k, v in config_globals.items() if k in LoadnsiConfig.__annotations__}
     return LoadnsiConfig(**filtered_keys)
 
