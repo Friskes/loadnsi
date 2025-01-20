@@ -8,13 +8,13 @@ def test_loadnsi():
     runner = CliRunner()
     result = runner.invoke(
         loadnsi,
-        # loadnsi --log_level=DEBUG --compress_files=gzip --use_pirate_api --show_model_data=file --model_data_params=all_fields_not_required --forced_update organization_nsi department_nsi  # noqa: E501
+        # loadnsi --log_level=DEBUG --compress_files=gzip --use_official_api --model_examples=file --model_examples_params=all_fields_not_required --forced_update organization_nsi department_nsi  # noqa: E501
         # [
         #     '--log_level', 'DEBUG',
         #     '--compress_files', 'gzip',
-        #     '--use_pirate_api',  # Флаговая опция (без значения)
-        #     '--show_model_data', 'file',
-        #     '--model_data_params', 'all_fields_not_required',
+        #     '--use_official_api',  # Флаговая опция (без значения)
+        #     '--model_examples', 'file',
+        #     '--model_examples_params', 'all_fields_not_required',
         #     '--forced_update', 'organization_nsi', 'department_nsi',  # Последовательные значения
         # ],
     )
