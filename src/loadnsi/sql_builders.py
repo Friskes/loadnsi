@@ -36,7 +36,7 @@ class SqlBuilder(Builder):
     def build_sql_copy_update_insert(
         self, dict_state: DictState, remote_dicts: list[dict], associate_map: dict[str, Callable]
     ) -> str:
-        """
+        r"""
         Генерирует SQL формата::
 
             BEGIN;
@@ -54,7 +54,7 @@ class SqlBuilder(Builder):
             COMMIT;
 
         https://www.postgresql.org/docs/current/sql-copy.html
-        """  # noqa: E501, W605
+        """  # noqa: E501
         log.debug('')
 
         sql_copy = self.build_sql_copy(dict_state, remote_dicts, associate_map)
@@ -112,7 +112,7 @@ class SqlBuilder(Builder):
         return '\n'.join(rows)
 
     def build_sql_copy_merge_matched(self):
-        """
+        r"""
         Генерирует SQL формата::
 
             BEGIN;
@@ -129,12 +129,12 @@ class SqlBuilder(Builder):
             ALTER TABLE <таблица> ENABLE TRIGGER ALL;
             REINDEX TABLE <таблица>;
             COMMIT;
-        """  # noqa: E501, W605
+        """  # noqa: E501
 
     def build_sql_copy(
         self, dict_state: DictState, remote_dicts: list[dict], associate_map: dict[str, Callable]
     ) -> str:
-        """
+        r"""
         Генерирует SQL формата::
 
             COPY public.<таблица> ("<self.dict_internal_pk_field>", "field2", "field3") FROM STDIN WITH (FORMAT text);
@@ -143,7 +143,7 @@ class SqlBuilder(Builder):
             \.
 
         https://www.postgresql.org/docs/current/sql-copy.html
-        """  # noqa: W605, E501
+        """  # noqa: E501
         log.debug('')
 
         self._changing_defaults_for_copy(associate_map)
@@ -165,7 +165,7 @@ class SqlBuilder(Builder):
         end_of_data_marker = '\\.\n'
 
         sql_query = (
-            f'COPY {dict_model} ({solid_fields}) ' f'FROM STDIN WITH (FORMAT text){start_of_data_marker}'
+            f'COPY {dict_model} ({solid_fields}) FROM STDIN WITH (FORMAT text){start_of_data_marker}'
         )
 
         rows = [sql_query]
