@@ -33,6 +33,7 @@ dependencies = [
     "tenacity==9.0.0",
     "rich==13.9.4",
     "python-dotenv==1.0.1",
+    # "pypika==0.48.9",
 ]
 
 

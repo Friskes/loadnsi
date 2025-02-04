@@ -2,7 +2,8 @@ NSI_FIXTURES_FOLDER = 'fixtures/nsi'
 NSI_PASSPORTS = {
     'file': 'dictionary_nsi.json',
     'model': 'nsi.DictionaryNsi',
-    # 'fields': ('oid', 'version', 'fullName'),
+    # 'include': ('oid', 'version', 'fullName'),
+    # 'exclude': ('fullName', 'shortName'),
 }
 DICT_INTERNAL_PK = 'custom_id'
 PASSPORTS_REL = 'nsi_dictionary'
@@ -74,8 +75,9 @@ NSI_DICTIONARIES = {
     'legal_guardian_doc_dictionary.json': {
         'model': 'nsi.LegalGuardianDocNsi',
         'oid': '1.2.643.5.1.13.13.99.2.313',
-        # 'filter': lambda r: 'Свидетельство' in r.get('NAME', ''),
-        # 'fields': ('ID', 'REPRESENTED', 'ATTRIBUTE_FACE'),
+        # 'filter': lambda r: 'Свидетельство' in r.get('name', ''),
+        # 'include': ('ID', 'REPRESENTED', 'ATTRIBUTE_FACE'),
+        # 'exclude': ('REPRESENTED', 'ATTRIBUTE_FACE'),
     },
     'address_type_nsi.json': {
         'model': 'nsi.AddressTypeNsi',

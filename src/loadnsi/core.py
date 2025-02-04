@@ -3,7 +3,7 @@ import asyncio
 import logging
 import time
 import uuid
-from collections.abc import Callable, Iterable
+from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
 from .console_view import rich_live
@@ -12,7 +12,16 @@ from .exceptions import BadSubclassError, NsiPkNotFoundError, SkipWriteFileError
 from .file_handlers import FileHandler
 from .logger import log
 from .model_examplers import Exampler
+from .sql_builders import Builder
 from .web_handlers import NsiWebCrawler
+
+
+async def safe_wrapper(coro, *args):
+    """Возвращает результат ошибки корутины вместе с её аргументами."""
+    try:
+        return await coro(*args)
+    except Exception as e:
+        return (e, args)
 
 
 # TODO(Ars): Разделить логику паспортов и справочников на 2 разных класса
@@ -27,10 +36,12 @@ class NsiDataHandler(abc.ABC):
         web: NsiWebCrawler,
         file: FileHandler,
         exampler: Exampler,
+        builder: Builder,
         nsi_passports: dict[str, str],
         nsi_dicts: dict[str, dict],
         do_not_use_nested_data: bool,
         forced_update: tuple[str, ...],
+        lowercase_fields: bool,
         dict_internal_pk_field: str,
         passports_rel_field: str,
     ) -> None:
@@ -43,26 +54,37 @@ class NsiDataHandler(abc.ABC):
         if not issubclass(type(exampler), Exampler):
             raise BadSubclassError('The model exampler must be a subclass of Exampler')
 
+        if not issubclass(type(builder), Builder):
+            raise BadSubclassError('The model builder must be a subclass of Builder')
+
         self.web = web
         self.file = file
         self.exampler = exampler
+        self.builder = builder
         self.passports_filename = nsi_passports['file']
         self.passports_modelname = nsi_passports['model']
-        self.passports_fields: Iterable[str] | None = nsi_passports.get('fields')
+
+        self.passports_include: Iterable[str] | None = nsi_passports.get('include')
+        self.passports_exclude: Iterable[str] | None = nsi_passports.get('exclude')
+        if self.passports_include and self.passports_exclude:
+            raise ValueError('Одновременное использование параметров include и exclude запрещено.')
+
         self.nsi_dicts = nsi_dicts
         self.do_not_use_nested_data = do_not_use_nested_data
         self.forced_update = forced_update
+        self.lowercase_fields = lowercase_fields
         self.dict_internal_pk_field = dict_internal_pk_field
         # Название поля модели паспортов связанной со справочниками
         self.passports_rel_field = passports_rel_field
 
+        self.DICT_PK_NAMES = ['ID', 'RECID', 'CODE', 'id', 'depart_oid', 'smocod']
+
         if self.do_not_use_nested_data:
             # NOTE(Ars): Для алгоритма без проваливания во вложенную data
-            self.DICT_PK_NAMES = {'ID', 'RECID', 'CODE', 'code', 'id', 'depart_oid'}
-        else:
-            # NOTE(Ars): Возможно для стабильности лучше было бы сделать
-            # определенный порядок проверки ключей
-            self.DICT_PK_NAMES = {'ID', 'RECID', 'CODE', 'id', 'depart_oid'}
+            self.DICT_PK_NAMES.append('code')
+
+        if self.lowercase_fields:
+            self.DICT_PK_NAMES = [k.lower() for k in self.DICT_PK_NAMES]
 
         # XXX(Ars): Как красивее обыграть?
         self.exampler.DICT_PK_NAMES = self.DICT_PK_NAMES
@@ -89,7 +111,7 @@ class NsiDataHandler(abc.ABC):
                 **meta_data,
             )
             log.debug('append coro for: %s', dict_filename)
-            coros.append(self.passport_processing(dict_state))
+            coros.append(safe_wrapper(self.passport_processing, dict_state))
 
         with rich_live:
             log.debug('gather start coros %s', coros)
@@ -105,17 +127,19 @@ class NsiDataHandler(abc.ABC):
         )
 
         for i, (result) in enumerate(results, start=1):
-            if isinstance(result, Exception):
+            status, args = result
+            if isinstance(status, Exception):
                 log.exception(
-                    'result %s: %r',
+                    'result %s: %r - %s',
                     i,
-                    result,
-                    exc_info=result if log.level == logging.DEBUG else False,
+                    status,
+                    args[0].dict_filename,
+                    exc_info=status if log.level == logging.DEBUG else False,
                 )
             else:
-                log.info('result %s: %r', i, f'{result[0]} - {result[1].dict_filename}')
+                log.info('result %s: %r', i, f'{status} - {args.dict_filename}')
 
-                self.exampler.show_dict_model(result[1])
+                self.exampler.show_dict_model(args)
 
         log.info('Общее время выполнения: %.1fсек.', time.time() - self.start_ts)
 
@@ -124,6 +148,9 @@ class NsiDataHandler(abc.ABC):
         log.debug('Обработка справочника: %s', dict_state.dict_filename)
 
         remote_passport = await self.web.get_remote_passport(dict_state)
+
+        if self.lowercase_fields:
+            remote_passport = self._to_lowercase_keys(remote_passport)
 
         # NOTE(Ars): Для того чтобы определить единое расширение файла
         # для всех последующих корутин работающих конкурентно,
@@ -219,11 +246,24 @@ class NsiDataHandler(abc.ABC):
                     associate_fields_to_types_map = self.build_associate_map_fields_to_types(
                         remote_dicts
                     )
-                    sql_records = self.build_sql_records(
-                        dict_state, remote_dicts, associate_fields_to_types_map
-                    )
-                    await self.file.write_sql_records(dict_state.dict_filename, sql_records)
+                    try:
+                        sql_records = self.builder.build_sql_copy_update_insert(
+                            dict_state, remote_dicts, associate_fields_to_types_map
+                        )
+                    except Exception as exc:
+                        log.exception(
+                            'Не удалось создать SQL фикстуру для: %s - %r',
+                            dict_state.dict_filename,
+                            exc,
+                            exc_info=exc,
+                        )
+                    else:
+                        await self.file.write_sql_records(dict_state.dict_filename, sql_records)
 
+                if not dict_state.passport_name:
+                    dict_state.passport_name = remote_passport[
+                        'shortname' if self.lowercase_fields else 'shortName'
+                    ]
                 self.exampler.upd_dict_model_data_with_passport_fields(dict_state, remote_passport)
                 dict_state.dict_changed = True
                 self.passport_changed = True
@@ -255,12 +295,22 @@ class NsiDataHandler(abc.ABC):
                         associate_fields_to_types_map = self.build_associate_map_fields_to_types(
                             remote_dicts
                         )
-                        sql_records = self.build_sql_records(
-                            dict_state, remote_dicts, associate_fields_to_types_map
-                        )
-                        await self.file.write_sql_records(dict_state.dict_filename, sql_records)
-                        filename_with_new_ext = filename.replace('.json', '.sql')
-                        self.file.remove_file(filename_with_new_ext)
+
+                        try:
+                            sql_records = self.builder.build_sql_copy_update_insert(
+                                dict_state, remote_dicts, associate_fields_to_types_map
+                            )
+                        except Exception as exc:
+                            log.exception(
+                                'Не удалось создать SQL фикстуру для: %s - %r',
+                                dict_state.dict_filename,
+                                exc,
+                                exc_info=exc,
+                            )
+                        else:
+                            await self.file.write_sql_records(dict_state.dict_filename, sql_records)
+                            filename_with_new_ext = filename.replace('.json', '.sql')
+                            self.file.remove_file(filename_with_new_ext)
 
                     log.info('SKIPPED+EXT - %s', dict_state.dict_filename)
                     return 'SKIPPED+EXT'
@@ -284,13 +334,27 @@ class NsiDataHandler(abc.ABC):
                     associate_fields_to_types_map = self.build_associate_map_fields_to_types(
                         remote_dicts
                     )
-                    sql_records = self.build_sql_records(
-                        dict_state, remote_dicts, associate_fields_to_types_map
-                    )
-                    await self.file.write_sql_records(dict_state.dict_filename, sql_records)
-                    filename_with_new_ext = filename.replace('.json', '.sql')
-                    self.file.remove_file(filename_with_new_ext)
 
+                    try:
+                        sql_records = self.builder.build_sql_copy_update_insert(
+                            dict_state, remote_dicts, associate_fields_to_types_map
+                        )
+                    except Exception as exc:
+                        log.exception(
+                            'Не удалось создать SQL фикстуру для: %s - %r',
+                            dict_state.dict_filename,
+                            exc,
+                            exc_info=exc,
+                        )
+                    else:
+                        await self.file.write_sql_records(dict_state.dict_filename, sql_records)
+                        filename_with_new_ext = filename.replace('.json', '.sql')
+                        self.file.remove_file(filename_with_new_ext)
+
+                if not dict_state.passport_name:
+                    dict_state.passport_name = remote_passport[
+                        'shortname' if self.lowercase_fields else 'shortName'
+                    ]
                 self.exampler.upd_dict_model_data_with_passport_fields(dict_state, remote_passport)
                 dict_state.dict_changed = True
                 self.passport_changed = True
@@ -313,11 +377,25 @@ class NsiDataHandler(abc.ABC):
                     associate_fields_to_types_map = self.build_associate_map_fields_to_types(
                         remote_dicts
                     )
-                    sql_records = self.build_sql_records(
-                        dict_state, remote_dicts, associate_fields_to_types_map
-                    )
-                    await self.file.write_sql_records(dict_state.dict_filename, sql_records)
 
+                    try:
+                        sql_records = self.builder.build_sql_copy_update_insert(
+                            dict_state, remote_dicts, associate_fields_to_types_map
+                        )
+                    except Exception as exc:
+                        log.exception(
+                            'Не удалось создать SQL фикстуру для: %s - %r',
+                            dict_state.dict_filename,
+                            exc,
+                            exc_info=exc,
+                        )
+                    else:
+                        await self.file.write_sql_records(dict_state.dict_filename, sql_records)
+
+                if not dict_state.passport_name:
+                    dict_state.passport_name = remote_passport[
+                        'shortname' if self.lowercase_fields else 'shortName'
+                    ]
                 self.exampler.upd_dict_model_data_with_passport_fields(dict_state, remote_passport)
                 dict_state.dict_changed = True
                 self.passport_changed = True
@@ -368,17 +446,24 @@ class NsiDataHandler(abc.ABC):
 
         remote_dicts = self.file.get_records_from_zip_file(dict_state, zip_buffer)
 
+        if self.lowercase_fields:
+            remote_dicts = self._to_lowercase_keys(remote_dicts)
+
         self.check_dict_pk_names(remote_dicts)
 
-        remote_dicts = self.filter_remote_dicts(dict_state.filter_func, remote_dicts)
-        return self.filter_remote_dicts_fields(dict_state.fields, remote_dicts)
+        remote_dicts = self.filter_remote_dicts(dict_state.filter, remote_dicts)
+        return self.filter_remote_dicts_fields(dict_state.include, dict_state.exclude, remote_dicts)
 
     def check_dict_pk_names(self, remote_dicts: list[dict]) -> None:
         """Проверка что хотябы один ключ из DICT_PK_NAMES присутствует в dict_data"""
         for record in remote_dicts:
             dict_data = self.get_dict_record_data(record)
             dict_data_keys = dict_data.keys()
-            if not self.DICT_PK_NAMES.intersection(dict_data_keys):
+
+            for pk_name in self.DICT_PK_NAMES:
+                if pk_name in dict_data_keys:
+                    break
+            else:
                 log.warning('dict_data: %r', dict_data)
                 raise NsiPkNotFoundError(
                     f'Уникальный идентификатор не найден по ключам: {self.DICT_PK_NAMES!r} '
@@ -469,120 +554,101 @@ class NsiDataHandler(abc.ABC):
         return remote_dicts
 
     def filter_remote_dicts_fields(
-        self, fields: Iterable[str] | None, remote_dicts: list[dict]
+        self, include: Iterable[str] | None, exclude: Iterable[str] | None, remote_dicts: list[dict]
     ) -> list[dict]:
-        if fields is not None:
-            fields_with_reserved_keys = self.DICT_PK_NAMES.union(fields)
+        if include is not None:
+            fields_with_reserved_keys = set(self.DICT_PK_NAMES).union(include)
             for i, record in enumerate(remote_dicts):
                 record = self.get_dict_record_data(record)
                 remote_dicts[i] = {k: v for k, v in record.items() if k in fields_with_reserved_keys}
+        if exclude is not None:
+            fields_without_reserved_keys = set(exclude).difference(self.DICT_PK_NAMES)
+            for i, record in enumerate(remote_dicts):
+                record = self.get_dict_record_data(record)
+                remote_dicts[i] = {
+                    k: v for k, v in record.items() if k not in fields_without_reserved_keys
+                }
         return remote_dicts
 
     def filter_remote_passport_fields(self, passport_fields: dict) -> dict:
-        if self.passports_fields is not None:
-            fields_with_reserved_keys = self.PASSPORT_RESERVED_FIELDS.union(self.passports_fields)
+        if self.passports_include is not None:
+            fields_with_reserved_keys = self.PASSPORT_RESERVED_FIELDS.union(self.passports_include)
             passport_fields = {
                 k: v for k, v in passport_fields.items() if k in fields_with_reserved_keys
             }
+        if self.passports_exclude is not None:
+            fields_without_reserved_keys = set(self.passports_exclude).difference(
+                self.PASSPORT_RESERVED_FIELDS
+            )
+            passport_fields = {
+                k: v for k, v in passport_fields.items() if k not in fields_without_reserved_keys
+            }
         return passport_fields
 
-    def build_sql_records(
-        self, dict_state: DictState, remote_dicts: list[dict], associate_map: dict[str, Callable]
-    ) -> str:
-        """
-        https://www.postgresql.org/docs/current/sql-copy.html
-        """
-        log.debug('')
-        # NOTE(Ars): Возможно для стабильности работы придется сортировать ключи
-        # по своему усмотрению, чтобы nsi не начудил
+    def _to_lowercase_keys(self, data: dict | list[dict]) -> dict | list[dict]:
+        if isinstance(data, Mapping):
+            passport = {}
+            for k, v in data.items():
+                if k == 'fields':
+                    fields = []
+                    for field_data in data['fields']:
+                        field_data['field'] = field_data['field'].lower()
+                        fields.append(field_data)
+                    v = fields
+                passport[k.lower()] = v
+            return passport
+        if isinstance(data, Iterable):
+            return [{k.lower(): v for k, v in self.get_dict_record_data(item).items()} for item in data]
+        # ? Не стоит приводить к нижнему регистру вложенные поля?
+        # stack = [data]
+        # while stack:
+        #     current = stack.pop()
+        #     if isinstance(current, Mapping):
+        #         for key in current:
+        #             new_key = key.lower() if isinstance(key, str) else key
+        #             current[new_key] = current.pop(key)
+        #             stack.append(current[new_key])
+        #     elif isinstance(current, Iterable):
+        #         stack.extend(current)
+        # return data
 
-        for field_name, field_type in associate_map.items():
-            # NOTE(Ars): NULL в SQL файле для COPY по умолчанию записываеться как '\N'
-            if field_type() is None:
-                associate_map[field_name] = lambda: r'\N'
-            # NOTE(Ars): Пустая строка "" в файле представлена как два знака табуляции: \t\t
-            # Пустая строка это отсутствие знака между
-            # двумя разделительными табуляциями \t""\t == \t\t\t\t
-            elif isinstance(field_type, str):
-                associate_map[field_name] = lambda: r'\t\t'
-
-        # NOTE(Ars): Для SQL фикстуры не получиться использовать passports_rel_field
-        # как алиас для passports_rel_field + _id, поля должны
-        # совпадать по имени с тем что действительно записано в БД.
-        associate_map[f'{self.passports_rel_field}_id'] = associate_map.pop(self.passports_rel_field)
-        for remote_dict in remote_dicts:
-            remote_dict['fields'] = {
-                f'{self.passports_rel_field}_id': remote_dict['fields'].pop(self.passports_rel_field),
-                # Для того чтобы passports_rel_field + _id переместился в начало словаря
-                **remote_dict['fields'],
-            }
-
-        dict_model = dict_state.model.lower().replace('.', '_')
-        dict_model = f'public.{dict_model}'
-
-        # NOTE(Ars): Для SQL фикстуры не получиться использовать pk как алиас для dict_internal_pk_field,
-        # поля должны совпадать по имени с тем что действительно записано в БД.
-        fields = (self.dict_internal_pk_field, *associate_map.keys())
-
-        # NOTE(Ars): Postgres приводит все названия полей к нижнему регистру
-        # если не поместить их в двойные кавычки.
-        solid_fields = ', '.join(f'"{f}"' for f in fields)
-
-        start_of_data_marker = ';'
-        end_of_data_marker = r'\.'
-
-        sql_query = f'COPY {dict_model} ({solid_fields}) FROM stdin{start_of_data_marker}'
-
-        # Добавления недостающих полей
-        for remote_dict in remote_dicts:
-            dict_fields: dict = remote_dict['fields']
-            updated_fields = {}
-
-            for field_name, field_type in associate_map.items():
-                if field_name in dict_fields:
-                    updated_fields[field_name] = dict_fields[field_name]
-                else:
-                    # Добавляем значение по умолчанию для недостающего поля
-                    updated_fields[field_name] = field_type()
-
-            # Обновляем поля в правильном порядке
-            remote_dict['fields'] = updated_fields
-
-        rows = [sql_query]
-        for remote_dict in remote_dicts:
-            values = '\t'.join(str(v) for v in remote_dict['fields'].values())
-            row = f'{remote_dict["pk"]}\t{values}'
-            rows.append(row)
-
-        rows.append(end_of_data_marker)
-
-        return '\n'.join(rows)
+    def _construct_passport_fields(self, fields: Iterable[str], remote_passport: dict) -> dict:
+        passport_fields = {}
+        for field in fields:
+            if self.lowercase_fields:
+                field = field.lower()
+            field_val = remote_passport.get(field)
+            if field_val:
+                passport_fields.update({field: field_val})
+        return passport_fields
 
     @abc.abstractmethod
     def build_passport(self, dict_state: DictState, remote_passport: dict) -> dict:
         """Базовая реализация объекта паспорта."""
         log.debug('')
+        default_passport_field_names = (
+            'fullName',
+            'shortName',
+            'version',
+            'createDate',
+            'publishDate',
+            'lastUpdate',
+            'approveDate',
+            'rowsCount',
+            'description',
+            'releaseNotes',
+            'structureNotes',
+            'fields',
+            'laws',
+            'hierarchical',
+            'identifier',
+            'oid',
+        )
+        fields = self._construct_passport_fields(default_passport_field_names, remote_passport)
         return {
             'model': self.passports_modelname,
             'pk': dict_state.passport_pk,
-            'fields': {
-                'fullName': remote_passport['fullName'],
-                'shortName': remote_passport['shortName'],
-                'version': remote_passport['version'],
-                'createDate': remote_passport['createDate'],
-                'publishDate': remote_passport['publishDate'],
-                'lastUpdate': remote_passport['lastUpdate'],
-                'approveDate': remote_passport['approveDate'],
-                'rowsCount': remote_passport['rowsCount'],
-                'description': remote_passport['description'],
-                'releaseNotes': remote_passport['releaseNotes'],
-                'structureNotes': remote_passport['structureNotes'],
-                'fields': remote_passport['fields'],
-                'laws': remote_passport['laws'],
-                'hierarchical': remote_passport['hierarchical'],
-                'identifier': remote_passport['identifier'],
-                'oid': remote_passport['oid'],
-            },
+            'fields': fields,
         }
 
 
@@ -592,24 +658,25 @@ class OfficialNsiDataHandler(NsiDataHandler):
     def build_passport(self, dict_state: DictState, remote_passport: dict) -> dict:
         """Добавляет доп ключи к записи, со значениями специфичными для официальных данных."""
         passport = super().build_passport(dict_state, remote_passport)
-        oid_additional = next(
+        oid_additional_key = 'additionaloids' if self.lowercase_fields else 'additionalOids'
+        oid_additional_val = next(
             (item['value'] for item in remote_passport['codes'] if item['type'] == 'TYPE_OTHER'), ''
         )
-        passport['fields'].update(
-            {
-                'additionalOids': oid_additional,
-                'groupId': remote_passport['groupId'],
-                'authOrganizationId': remote_passport['authOrganizationId'],
-                'respOrganizationId': remote_passport['respOrganizationId'],
-                'typeId': remote_passport['typeId'],
-                'keys': remote_passport['keys'],
-                'result': remote_passport['result'],
-                'resultCode': remote_passport['resultCode'],
-                'resultText': remote_passport['resultText'],
-                'nsiDictionaryId': remote_passport['nsiDictionaryId'],
-                'archive': remote_passport['archive'],
-            }
+        passport_field_names = (
+            'groupId',
+            'authOrganizationId',
+            'respOrganizationId',
+            'typeId',
+            'keys',
+            'result',
+            'resultCode',
+            'resultText',
+            'nsiDictionaryId',
+            'archive',
         )
+        fields = self._construct_passport_fields(passport_field_names, remote_passport)
+        fields[oid_additional_key] = oid_additional_val
+        passport['fields'].update(fields)
         passport['fields'] = self.filter_remote_passport_fields(passport['fields'])
         return passport
 
@@ -620,22 +687,25 @@ class PirateNsiDataHandler(NsiDataHandler):
     def build_passport(self, dict_state: DictState, remote_passport: dict) -> dict:
         """Добавляет доп ключи к записи, со значениями специфичными для пиратских данных."""
         passport = super().build_passport(dict_state, remote_passport)
-        passport['fields'].update(
-            {
-                'additionalOids': remote_passport['additionalOids'],
-                'groupId': remote_passport['group']['id'],
-                # NOTE(Ars): Значение не сходиться
-                'authOrganizationId': 0,  # remote_passport['authOrganization']['id'],
-                'respOrganizationId': 0,  # remote_passport['respOrganization']['id'],
-                # NOTE(Ars): Эти поля отсутствуют в ответе пиратского апи.
-                'typeId': 0,
-                'keys': [],
-                'result': '',
-                'resultCode': 0,
-                'resultText': '',
-                'nsiDictionaryId': 0,
-                'archive': False,
-            }
-        )
+        fields = {
+            'groupId': remote_passport['group']['id'],
+            # NOTE(Ars): Значение не сходиться
+            'authOrganizationId': 0,  # remote_passport['authOrganization']['id'],
+            'respOrganizationId': 0,  # remote_passport['respOrganization']['id'],
+            # NOTE(Ars): Эти поля отсутствуют в ответе пиратского апи.
+            'typeId': 0,
+            'keys': [],
+            'result': '',
+            'resultCode': 0,
+            'resultText': '',
+            'nsiDictionaryId': 0,
+            'archive': False,
+        }
+        oid_additional_key = 'additionaloids' if self.lowercase_fields else 'additionalOids'
+        oid_additional_val = remote_passport.get(oid_additional_key)
+        if oid_additional_val:
+            fields[oid_additional_key] = oid_additional_val
+        fields = {k.lower(): v for k, v in fields.items()}
+        passport['fields'].update(fields)
         passport['fields'] = self.filter_remote_passport_fields(passport['fields'])
         return passport

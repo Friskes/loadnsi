@@ -56,7 +56,7 @@ class ModelExampler(Exampler):
         dict: 'JSONField',
         list: 'JSONField',
     }
-    DICT_PK_NAMES: set[str]
+    DICT_PK_NAMES: list[str]
 
     def __init__(
         self,
@@ -143,11 +143,14 @@ class ModelExampler(Exampler):
         for field_name, field_params in dict_state.dict_model_data.items():
             params = []
 
+            alias = field_params.get('alias')
             if issubclass(field_params['field_type'], (dict, list)):
-                params.append(f'verbose_name={field_params.get("alias", "")!r}')
+                if alias:
+                    params.append(f'verbose_name={alias!r}')
                 params.append(f'default={field_params["field_type"].__name__}')
             else:
-                params.append(f'{field_params["alias"]!r}')
+                if alias:
+                    params.append(f'{alias!r}')
 
             max_length = field_params.get('field_length')
             if max_length is not None:
@@ -206,12 +209,9 @@ class ModelExampler(Exampler):
             return
         log.debug('Обновление dict_model_data')
 
-        if not dict_state.passport_name:
-            dict_state.passport_name = remote_passport['shortName']
-
         for field_data in remote_passport['fields']:
-            key = field_data['field']
-            if key == 'extId':
+            key: str = field_data['field']
+            if key.lower() == 'extid':
                 for pk_name in self.DICT_PK_NAMES:
                     if pk_name in dict_state.dict_model_data:
                         key = pk_name
@@ -227,8 +227,9 @@ class ModelExampler(Exampler):
                 'alias',
                 # 'dataType',
             ):
+                field_val = field_data[k]
                 try:
-                    dict_state.dict_model_data[key][k] = field_data[k]
+                    dict_state.dict_model_data[key][k] = field_val
                 except KeyError as exc:
                     log.warning(
                         'Ключ: %s есть в fields паспорта справочника, '

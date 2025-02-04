@@ -1,6 +1,7 @@
 import abc
 import io
 import json
+import logging
 
 import httpx
 from bs4 import BeautifulSoup
@@ -264,17 +265,31 @@ class PirateApiNsiWebCrawler(NsiWebCrawler):
         nsi_files_path: str,
     ) -> None:
         super().__init__(nsi_base_url, nsi_versions_path, nsi_passport_path, nsi_files_path)
-        build_id = self._get_build_id()
+        try:
+            resp_text = self._get_html_with_build_id()
+        except Exception as exc:
+            if log.level == logging.DEBUG:
+                raise exc
+            raise type(exc)('Не удалось получить buildId, попробуйте повторить попытку.')  # noqa: B904
+
+        build_id = parse_build_id_from_html(resp_text)
+
         self.nsi_passport_path = self.nsi_passport_path.format_map(SafeDictFormatMap(buildId=build_id))
 
-    def _get_build_id(self) -> str:
+    @retry(
+        retry=retry_if_exception_type((httpx.HTTPError,)),
+        stop=stop_after_attempt(MAX_ATTEMPT_NUMBER),
+        wait=wait_random(min=3, max=6),
+    )
+    def _get_html_with_build_id(self) -> str:
         """Возвращает buildId для построения url path к апи получения passport."""
         log.debug('Запрос для получения buildId')
-        with httpx.Client(**self.data_client_kw) as client:
+        data_client_kw = dict(self.data_client_kw, timeout=httpx.Timeout(15))
+        with httpx.Client(**data_client_kw) as client:
             response = client.get('')
             log.debug('status_code: %s', response.status_code)
             response.raise_for_status()
-        return parse_build_id_from_html(response.text)
+        return response.text
 
     @retry(**retry_params)
     async def get_remote_passport(self, dict_state: DictState, get_kwargs: dict | None = None) -> dict:

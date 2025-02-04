@@ -13,6 +13,7 @@ from rich.progress import (
     Progress,
     SpinnerColumn,
     TextColumn,
+    TimeRemainingColumn,
     TransferSpeedColumn,
 )
 from rich.text import Text
@@ -46,6 +47,7 @@ download_progress_bar = Progress(
     TextColumn('[progress.percentage]{task.percentage:>3.0f}%'),
     DownloadColumn(),
     TransferSpeedColumn(),
+    TimeRemainingColumn(),
 )
 timeout_progress_bar = Progress(
     SpinnerColumn(),

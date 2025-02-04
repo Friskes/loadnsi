@@ -11,6 +11,7 @@ from .core import OfficialNsiDataHandler, PirateNsiDataHandler
 from .file_handlers import NsiFileHandler
 from .logger import log, switch_logger
 from .model_examplers import ModelExampler
+from .sql_builders import SqlBuilder
 from .web_handlers import OfficialApiNsiWebCrawler, PirateApiNsiWebCrawler
 
 load_dotenv(find_dotenv())
@@ -26,9 +27,10 @@ class LoadnsiConfig:
     NSI_DICTIONARIES: dict
 
 
-def load_config(config_path: str) -> dict:
+def load_config(root_dir: str | None, config_path: str) -> dict:
     """Загружает файл конфигурации как модуль."""
-    full_path = os.path.join(os.getcwd(), config_path)
+    start_dir = root_dir if root_dir else os.getcwd()
+    full_path = os.path.join(start_dir, config_path)
     config_globals = {}
     with open(full_path, encoding='utf-8') as file:
         file_data = file.read()
@@ -37,7 +39,7 @@ def load_config(config_path: str) -> dict:
     return LoadnsiConfig(**filtered_keys)
 
 
-config = load_config(os.environ['PATH_TO_LOADNSI_CONFIG'])
+config = load_config(os.environ.get('ABS_ROOT_DIR'), os.environ['PATH_TO_LOADNSI_CONFIG'])
 
 fixtures_path = Path(config.NSI_FIXTURES_FOLDER)
 if not fixtures_path.exists():
@@ -130,6 +132,15 @@ filenames_without_ext = [
     help='Названия файлов без расширений записанные через пробелы, '
     'для принудительно обновления, даже если версия справочника не изменилась. '
     '-fu filename1 -fu filename2',
+)
+@click.option(
+    '--lowercase_fields',
+    '-lf',
+    show_default=True,
+    default=True,
+    # is_flag=True,  # Не запрашивать значение для флага если он передан при запуске
+    help='Приводить вообще все поля к нижнему регистру, а именно: '
+    'справочников | паспортов в json, sql, примерах моделей.',
 )
 def loadnsi(**options):
     """
@@ -229,6 +240,11 @@ def run_loadnsi(**options):
         parent_dict_cls=config.PARENT_DICT_CLS,
     )
 
+    builder = SqlBuilder(
+        dict_internal_pk_field=config.DICT_INTERNAL_PK,
+        passports_rel_field=config.PASSPORTS_REL,
+    )
+
     if options['use_official_api']:
         web = OfficialApiNsiWebCrawler(
             nsi_base_url=nsi_base_url,
@@ -241,10 +257,12 @@ def run_loadnsi(**options):
             web,
             file,
             exampler,
+            builder,
             nsi_passports=nsi_passports,
             nsi_dicts=nsi_dicts,
             do_not_use_nested_data=options['do_not_use_nested_data'],
             forced_update=options['forced_update'],
+            lowercase_fields=options['lowercase_fields'],
             dict_internal_pk_field=config.DICT_INTERNAL_PK,
             passports_rel_field=config.PASSPORTS_REL,
         )
@@ -259,10 +277,12 @@ def run_loadnsi(**options):
             web,
             file,
             exampler,
+            builder,
             nsi_passports=nsi_passports,
             nsi_dicts=nsi_dicts,
             do_not_use_nested_data=options['do_not_use_nested_data'],
             forced_update=options['forced_update'],
+            lowercase_fields=options['lowercase_fields'],
             dict_internal_pk_field=config.DICT_INTERNAL_PK,
             passports_rel_field=config.PASSPORTS_REL,
         )
