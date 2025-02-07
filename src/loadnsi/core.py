@@ -239,7 +239,9 @@ class NsiDataHandler(abc.ABC):
                         dict_state,
                         remote_dicts,
                         remote_passport,
-                        lambda record_data: associate_pk_map[self.get_dict_record_pk(record_data)],
+                        lambda record_data: associate_pk_map.get(
+                            self.get_dict_record_pk(record_data), {'pk': str(uuid.uuid4())}
+                        ),
                     )
 
                 if dict_state.create_sql:
@@ -289,7 +291,9 @@ class NsiDataHandler(abc.ABC):
                             dict_state,
                             remote_dicts,
                             remote_passport,
-                            lambda record_data: associate_pk_map[self.get_dict_record_pk(record_data)],
+                            lambda record_data: associate_pk_map.get(
+                                self.get_dict_record_pk(record_data), {'pk': str(uuid.uuid4())}
+                            ),
                         )
 
                         associate_fields_to_types_map = self.build_associate_map_fields_to_types(
@@ -324,7 +328,9 @@ class NsiDataHandler(abc.ABC):
                     dict_state,
                     remote_dicts,
                     remote_passport,
-                    lambda record_data: associate_pk_map[self.get_dict_record_pk(record_data)],
+                    lambda record_data: associate_pk_map.get(
+                        self.get_dict_record_pk(record_data), {'pk': str(uuid.uuid4())}
+                    ),
                 )
 
                 await self.file.write_records(dict_state.dict_filename, remote_dicts)
