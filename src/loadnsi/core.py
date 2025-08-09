@@ -77,7 +77,7 @@ class NsiDataHandler(abc.ABC):
         # Название поля модели паспортов связанной со справочниками
         self.passports_rel_field = passports_rel_field
 
-        self.DICT_PK_NAMES = ['ID', 'RECID', 'CODE', 'id', 'depart_oid', 'smocod']
+        self.DICT_PK_NAMES = ['ID', 'RECID', 'CODE', 'id', 'depart_oid', 'smocod', 'Id']
 
         if self.do_not_use_nested_data:
             # NOTE(Ars): Для алгоритма без проваливания во вложенную data
